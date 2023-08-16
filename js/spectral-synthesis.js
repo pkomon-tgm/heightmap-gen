@@ -289,12 +289,25 @@ function generateTexture(data) {
     return texture;
 }
 
-function createHeightMapGeometryAndMaterial(heightField, seamless, cellWidth, cellHeight) {
-    ensureRectangular(heightField);
+function createHeightMapShaderMaterial(heightmapTexture = undefined, wireframe = true) {
+    return new THREE.ShaderMaterial({
+        uniforms: {
+            heightMap: {value: heightmapTexture},
+        },
+        vertexShader: vertexShaderText,
+        fragmentShader: fragmentShaderText,
 
-    const numHeightFieldRows = heightField.length;
-    const numHeightFieldCols = heightField[0].length;
+        wireframe: wireframe,
+        side: THREE.FrontSide,
+    });
+}
 
+function createHeightmapTexture(heightmapData) {
+    const textureData = heightmapData.map(row => row.map(value => Math.round(value * 255))); //TODO
+    return generateTexture(textureData);
+}
+
+function createHeightMapGeometry(numHeightFieldRows, numHeightFieldCols, seamless, cellWidth, cellHeight) {
     const numRowsWithSeam = seamless ? numHeightFieldRows + 1 : numHeightFieldRows;
     const numColsWithSeam = seamless ? numHeightFieldCols + 1 : numHeightFieldCols;
 
@@ -308,32 +321,13 @@ function createHeightMapGeometryAndMaterial(heightField, seamless, cellWidth, ce
         uv = uv.concat([uv[0]]);
     }
 
-    const textureData = heightField.map(row => row.map(value => Math.round(value * 255)));
-    const heightmapTexture = generateTexture(textureData);
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            heightMap: {value: heightmapTexture},
-        },
-        vertexShader: vertexShaderText,
-        fragmentShader: fragmentShaderText,
-
-        wireframe: true,
-        side: THREE.FrontSide,
-    });
-
-
-    console.log("heightField", heightField);
-    console.log("vertices", vertices);
-    console.log("uv", uv);
-
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(vertices.flat(2)), 3));
     geometry.computeVertexNormals(true);
     geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(uv.flat(2)), 2));
     geometry.setIndex(indices);
 
-    return {geometry: geometry, material: material};
+    return geometry;
 }
 
 class Controller {
@@ -386,16 +380,14 @@ class Controller {
         this.#currentMeshes.forEach(mesh => this.#scene.scene.remove(mesh));
         this.#currentMeshes.length = 0; // clear array
 
-        console.log("update scene");
-
         const samples = this.#terrainGenerator.modifiedSamples;
-        console.log("samples", samples);
-        const {
-            geometry,
-            material
-        } = createHeightMapGeometryAndMaterial(samples, this.seamless, this.cellWidth, this.cellHeight);
-        this.#currentMaterial = material;
-        this.updateMaterial();
+
+        const texture = createHeightmapTexture(samples);
+        this.#currentMaterial = createHeightMapShaderMaterial(texture);
+        this.updateMaterial(); //TODO somewhat ugly
+
+        const geometry = createHeightMapGeometry(this.numRows, this.numCols,
+            this.seamless, this.cellWidth, this.cellHeight);
 
         const xSize = this.numCols * this.cellWidth;
         const zSize = this.numRows * this.cellHeight;
@@ -403,7 +395,7 @@ class Controller {
         const zOffset = -this.tileRows * zSize / 2;
         for (let rowIndex = 0; rowIndex < this.tileRows; rowIndex++) {
             for (let colIndex = 0; colIndex < this.tileCols; colIndex++) {
-                const mesh = new THREE.Mesh(geometry, material);
+                const mesh = new THREE.Mesh(geometry, this.#currentMaterial);
                 this.#scene.scene.add(mesh);
                 this.#currentMeshes.push(mesh);
                 mesh.position.set(colIndex * xSize + xOffset, 0, rowIndex * zSize + zOffset);
