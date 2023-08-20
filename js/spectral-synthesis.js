@@ -34,7 +34,7 @@ class HeightmapScene {
         this.perspCamera.up.set(0, 1, 0);
 
         // camera parameters
-        this.radius = 2.5;
+        this.radius = 5;
         this.phi = Math.PI / 2;
         this.theta = Math.PI / 4;
         this.cameraCenter = new THREE.Vector3(0, 0, 0);
@@ -83,7 +83,7 @@ class HeightmapScene {
 
     handleMouseScroll(event) {
         const newRadius = this.radius + Math.sign(event.deltaY) * this.scrollSensitivity;
-        if (newRadius > 0) {
+        if (newRadius >= 1) {
             this.radius = newRadius;
             this.updateArcballCamera();
         }
@@ -256,11 +256,11 @@ function createHeightmapTexture(heightmapData) {
     return generateTexture(textureData);
 }
 
-function createHeightMapGeometry(numHeightFieldRows, numHeightFieldCols, seamless, cellWidth, cellHeight) {
+function createHeightMapGeometry(numHeightFieldRows, numHeightFieldCols, seamless) {
     const numRowsWithSeam = seamless ? numHeightFieldRows + 1 : numHeightFieldRows;
     const numColsWithSeam = seamless ? numHeightFieldCols + 1 : numHeightFieldCols;
 
-    const vertices = generateGridMeshVertices(numRowsWithSeam, numColsWithSeam, cellWidth, cellHeight);
+    const vertices = generateGridMeshVertices(numRowsWithSeam, numColsWithSeam);
     let uv = generateGridMeshUv(numHeightFieldRows, numHeightFieldCols);
     const indices = generateGridMeshIndices(numRowsWithSeam - 1, numColsWithSeam - 1);
 
@@ -279,7 +279,7 @@ function createHeightMapGeometry(numHeightFieldRows, numHeightFieldCols, seamles
     return geometry;
 }
 
-function computeHeightmapNormals(heights, scale = [0.05, 1.0, 0.05]) {
+function computeHeightmapNormals(heights, scale) {
     Utils.ensureRectangular(heights);
     const height = heights.length;
     const width = heights[0].length;
@@ -321,19 +321,18 @@ class Controller {
     static SHADING_MODES = {
         "color": 1,
         "normal": 2,
-        "uv": 3,
+        "heightmap-uv": 3,
         "work-in-progress": 4,
     };
 
     shading = "color"; //TODO work on it later
     axesHelper = new THREE.AxesHelper(5);
+    wireframe = true;
 
     hurstExponent = 2.0;
     numRows = 64;
     numCols = 64;
-    cellWidth = 0.05;
-    cellHeight = 0.05;
-    yScale = 1.0;
+    scale = new THREE.Vector3(0.25, 1.0, 0.25);
     rowFrequencyFactor = 1.0;
     colFrequencyFactor = 1.0;
     tileRows = 1;
@@ -381,15 +380,16 @@ class Controller {
         this.currentMaterial.uniforms.heightMap.value = heightmapTexture;
         this.currentMaterial.uniforms.normals.value = normalsTexture;
 
-        this.updateShadingMode(); //TODO somewhat ugly
+        //TODO somewhat ugly
+        this.updateWireframe();
+        this.updateShadingMode();
         this.updateAnimationEnabled();
         this.updateAnimationSpeeds();
 
-        const geometry = createHeightMapGeometry(this.numRows, this.numCols,
-            this.seamless, this.cellWidth, this.cellHeight);
+        const geometry = createHeightMapGeometry(this.numRows, this.numCols, this.seamless);
 
-        const xSize = this.numCols * this.cellWidth;
-        const zSize = this.numRows * this.cellHeight;
+        const xSize = this.numCols * this.scale.x;
+        const zSize = this.numRows * this.scale.z;
         const xOffset = -this.tileCols * xSize / 2;
         const zOffset = -this.tileRows * zSize / 2;
         for (let rowIndex = 0; rowIndex < this.tileRows; rowIndex++) {
@@ -398,7 +398,7 @@ class Controller {
                 this.#scene.scene.add(mesh);
                 this.#currentMeshes.push(mesh);
                 mesh.position.set(colIndex * xSize + xOffset, 0, rowIndex * zSize + zOffset);
-                mesh.scale.y = this.yScale;
+                mesh.scale.set(this.scale.x, this.scale.y, this.scale.z);
             }
         }
     }
@@ -411,7 +411,7 @@ class Controller {
         this.#terrainGenerator.spectrumTransform = hurstExponentWithFrequencyScaling(this.hurstExponent,
             this.rowFrequencyFactor, this.colFrequencyFactor);
         this.#currentOutputSample = this.#terrainGenerator.calculateOutput(this.#currentInputSample);
-        this.#currentNormals = computeHeightmapNormals(this.#currentOutputSample);
+        this.#currentNormals = computeHeightmapNormals(this.#currentOutputSample, this.scale.toArray());
     }
 
     regenerateHeightmap() {
@@ -423,6 +423,11 @@ class Controller {
         this.regenerateInputSamples();
         this.calculateOutputSamples();
         this.updateScene();
+    }
+
+    updateWireframe() {
+        this.currentMaterial.wireframe = this.wireframe;
+        this.currentMaterial.needsUpdate = true;
     }
 
     updateShadingMode() {
@@ -450,8 +455,9 @@ function main() {
     const displayOptionsFolder = gui.addFolder("Display");
     displayOptionsFolder.add(controller, "shading", Object.keys(Controller.SHADING_MODES))
         .onChange(_ => controller.updateShadingMode());
-    displayOptionsFolder.add(controller.currentMaterial, "wireframe")
+    displayOptionsFolder.add(controller, "wireframe")
         .name("Wireframe")
+        .onChange(_ => controller.updateWireframe());
     displayOptionsFolder.add(controller.axesHelper, "visible")
         .name("Show world axes");
 
@@ -460,11 +466,11 @@ function main() {
         .onFinishChange(_ => controller.generateNewHeightmap());
     gridOptionsFolder.add(controller, "numCols", 0, 128, 1)
         .onFinishChange(_ => controller.generateNewHeightmap());
-    gridOptionsFolder.add(controller, "cellWidth", 0.05, 0.5, 0.05)
+    gridOptionsFolder.add(controller.scale, "x", 0.05, 0.5, 0.05)
         .onChange(_ => controller.updateScene());
-    gridOptionsFolder.add(controller, "cellHeight", 0.05, 0.5, 0.05)
+    gridOptionsFolder.add(controller.scale, "z", 0.05, 0.5, 0.05)
         .onChange(_ => controller.updateScene());
-    gridOptionsFolder.add(controller, "yScale", 0.0, 10.0)
+    gridOptionsFolder.add(controller.scale, "y", 0.0, 10.0)
         .onChange(_ => controller.updateScene());
 
     const generationOptionsFolder = gui.addFolder("Generation");
