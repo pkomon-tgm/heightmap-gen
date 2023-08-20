@@ -1,32 +1,37 @@
 import * as THREE from "three";
 import {GUI} from "three/addons/libs/lil-gui.module.min.js";
 
-function clamp(min, value, max) {
-    return Math.max(min, Math.min(value, max));
-}
+class Utils {
 
-function normalize2dArray(values) {
-    const minResult = Math.min(...values.map(row => Math.min(...row)));
-    const maxResult = Math.max(...values.map(row => Math.max(...row)));
-    return values.map(valueArray => valueArray.map(value => (value - minResult) / (maxResult - minResult)));
+    static ensureRectangular(array) {
+        array.forEach((row, _) => console.assert(row.length === array[0].length));
+    }
+
+    static clamp(min, value, max) {
+        return Math.max(min, Math.min(value, max));
+    }
+
+    static normalize2dArray(values) {
+        const minResult = Math.min(...values.map(row => Math.min(...row)));
+        const maxResult = Math.max(...values.map(row => Math.max(...row)));
+        return values.map(valueArray => valueArray.map(value => (value - minResult) / (maxResult - minResult)));
+    }
 }
 
 class HeightmapScene {
-    constructor(domElement) {
+    dragSensitivity = 0.005;
+    orbitSensitivity = 0.005;
+    scrollSensitivity = 0.5;
 
-        const viewportDimensions = domElement.getBoundingClientRect();
+    updateCallback = undefined;
+    lastTimeStamp = undefined;
+
+    constructor(domElement) {
+        const {width, height} = domElement.getBoundingClientRect();
 
         this.scene = new THREE.Scene();
-        this.perspCamera = new THREE.PerspectiveCamera(75,
-            viewportDimensions.width / viewportDimensions.height, 0.1, 1000);
+        this.perspCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
         this.perspCamera.up.set(0, 1, 0);
-        // TODO fix later, unimportant
-        this.orthoCamera = new THREE.OrthographicCamera(-3, 3,
-            (viewportDimensions.width / viewportDimensions.height) * -3,
-            (viewportDimensions.width / viewportDimensions.height) * 3,
-            0.1, 1000);
-        //this.orthoCamera.up.set(0, 1, 0);
-        this.camera = this.perspCamera;
 
         // camera parameters
         this.radius = 2.5;
@@ -34,10 +39,10 @@ class HeightmapScene {
         this.theta = Math.PI / 4;
         this.cameraCenter = new THREE.Vector3(0, 0, 0);
 
-        this.updateArcballCameras();
+        this.updateArcballCamera();
 
         this.renderer = new THREE.WebGLRenderer({canvas: domElement});
-        this.renderer.setSize(viewportDimensions.width, viewportDimensions.height);
+        this.renderer.setSize(width, height);
 
         this.isMouseDown = false;
         domElement.addEventListener("mousedown", () => {
@@ -55,9 +60,8 @@ class HeightmapScene {
 
     }
 
-    updateArcballCameras() {
+    updateArcballCamera() {
         HeightmapScene.updateCamera(this.perspCamera, this.radius, this.theta, this.phi, this.cameraCenter);
-        HeightmapScene.updateCamera(this.orthoCamera, this.radius, this.theta, this.phi, this.cameraCenter);
     }
 
     handleMouseMove(event) {
@@ -66,35 +70,44 @@ class HeightmapScene {
         }
 
         if (event.shiftKey) {
-            const DRAG_SENSITIVITY = 0.005;
-            const relativeMovement = new THREE.Vector3(-event.movementY * DRAG_SENSITIVITY, 0, event.movementX * DRAG_SENSITIVITY)
+            const relativeMovement = new THREE.Vector3(-event.movementY * this.dragSensitivity, 0, event.movementX * this.dragSensitivity)
                 .applyAxisAngle(new THREE.Vector3(0, 1, 0), -this.phi);
             this.cameraCenter.add(relativeMovement);
-            this.updateArcballCameras();
+            this.updateArcballCamera();
         } else {
-            const ORBIT_SENSITIVITY = 0.005;
-            this.theta = clamp(ORBIT_SENSITIVITY, this.theta - event.movementY * ORBIT_SENSITIVITY, Math.PI - ORBIT_SENSITIVITY);
-            this.phi = this.phi + event.movementX * ORBIT_SENSITIVITY;
-            this.updateArcballCameras();
+            this.theta = Utils.clamp(this.orbitSensitivity, this.theta - event.movementY * this.orbitSensitivity, Math.PI - this.orbitSensitivity);
+            this.phi = this.phi + event.movementX * this.orbitSensitivity;
+            this.updateArcballCamera();
         }
     }
 
     handleMouseScroll(event) {
-        const SCROLL_SENSITIVITY = 0.5;
-        const dir = Math.sign(event.deltaY);
-        this.radius += dir * SCROLL_SENSITIVITY;
-        this.updateArcballCameras();
+        const newRadius = this.radius + Math.sign(event.deltaY) * this.scrollSensitivity;
+        if (newRadius > 0) {
+            this.radius = newRadius;
+            this.updateArcballCamera();
+        }
     }
 
-    animate() {
+    animate(currentTimestamp) {
         requestAnimationFrame(this.animate.bind(this));
-        this.renderer.render(this.scene, this.camera);
+
+        if (this.lastTimeStamp === undefined) {
+            this.lastTimeStamp = currentTimestamp;
+        }
+
+        const timeElapsedSinceLastFrame = (currentTimestamp - this.lastTimeStamp) / 1000;
+        this.lastTimeStamp = currentTimestamp;
+
+        if (this.updateCallback !== undefined) {
+            this.updateCallback(timeElapsedSinceLastFrame);
+        }
+
+        this.renderer.render(this.scene, this.perspCamera);
     }
 
     static updateCamera(camera, radius, theta, phi, center) {
-        camera.position.set(radius * Math.sin(theta) * Math.cos(phi),
-            radius * Math.cos(theta),
-            radius * Math.sin(theta) * Math.sin(phi))
+        camera.position.set(radius * Math.sin(theta) * Math.cos(phi), radius * Math.cos(theta), radius * Math.sin(theta) * Math.sin(phi))
             .add(center);
         camera.lookAt(center);
     }
@@ -109,34 +122,15 @@ function generateGridMeshIndices(numRows, numCols) {
             continue;
         }
 
-        indices.push(i, i + numCols + 1, i + 1,
-            i + 1, i + numCols + 1, i + numCols + 2);
+        indices.push(i, i + numCols + 1, i + 1, i + 1, i + numCols + 1, i + numCols + 2);
     }
     return indices;
 }
 
-// old version used to generate vertices directly
-/*function generateGridMeshVertices(cellSizeAlongX, cellSizeAlongZ, yScale, heightMap) {
-    return heightMap
-        .map((valueArray, rowIndex) => valueArray
-            .map((value, colIndex) => [
-                colIndex * cellSizeAlongX,
-                value * yScale,
-                rowIndex * cellSizeAlongZ,
-            ])
-            .reduce((acc, vec) => acc.concat(...vec), []))
-        .reduce((acc, vec) => acc.concat(...vec), []);
-}*/
-
-function generateGridMeshVertices(numRows, numCols, cellSizeAlongX, cellSizeAlongZ) {
+function generateGridMeshVertices(numRows, numCols, cellSizeAlongX = 1.0, cellSizeAlongZ = 1.0) {
     return [...new Array(numRows)]
         .map((_, rowIndex) => [...new Array(numCols)]
-            .map((_, colIndex) => [
-                colIndex * cellSizeAlongX,
-                0,
-                rowIndex * cellSizeAlongZ,
-            ])
-        );
+            .map((_, colIndex) => [colIndex * cellSizeAlongX, 0, rowIndex * cellSizeAlongZ,]));
 }
 
 function generateGridMeshUv(numRows, numCols) {
@@ -146,66 +140,12 @@ function generateGridMeshUv(numRows, numCols) {
 }
 
 // used for transforming spectrum
-function hurstExponentScaling(hurstExponent) {
+function hurstExponentWithFrequencyScaling(hurstExponent, rowFrequencyFactor = 1.0, colFrequencyFactor = 1.0) {
     return function (coefficient, rowIndex, colIndex, coefficientArray) {
-        return math.multiply(coefficient,
-            1 / Math.pow((rowIndex + colIndex + 1) / coefficientArray.length, hurstExponent));
+        return math.dotMultiply(coefficient, 1 / Math.pow((rowFrequencyFactor * rowIndex + colFrequencyFactor * colIndex + 1), hurstExponent));
     };
 }
 
-// used for transforming spectrum
-function hurstExponentWithFrequencyScaling(hurstExponent, rowFrequencyFactor, colFrequencyFactor) {
-    return function (coefficient, rowIndex, colIndex, coefficientArray) {
-        return math.multiply(coefficient,
-            1 / Math.pow((rowFrequencyFactor * rowIndex + colFrequencyFactor * colIndex + 1), hurstExponent));
-    };
-}
-
-// TODO tried to mimic d3's generator structure, idk, kind of dont like how it turned out
-class GridGenerator {
-    #numRows = 5;
-    #numCols = 5;
-    #initFunc = function (rowIndex, colIndex) {
-        return 0;
-    };
-
-    numRows(value) {
-        if (arguments.length === 0) {
-            return this.#numRows;
-        } else {
-            this.#numRows = value;
-            return this;
-        }
-    }
-
-    numCols(value) {
-        if (arguments.length === 0) {
-            return this.#numCols;
-        } else {
-            this.#numCols = value;
-            return this;
-        }
-    }
-
-    initFunc(value) {
-        if (arguments.length === 0) {
-            return this.#initFunc;
-        } else {
-            this.#initFunc = value;
-            return this;
-        }
-    }
-
-    generate() {
-        return generateValueGrid(this.#numRows, this.#numCols, this.#initFunc);
-    }
-
-    static whiteNoise() {
-        return new GridGenerator()
-            .initFunc(Math.random());
-    }
-
-}
 
 function generateValueGrid(numRows, numCols, func) {
     return [...Array(numRows)]
@@ -218,35 +158,21 @@ const whiteNoise = Math.random;
 const identityFunction = i => i;
 
 class TerrainGenerator {
-    numRows = 64;
-    numCols = 64;
 
-    initialSampleFunction = whiteNoise;
     spectrumTransform = identityFunction;
 
     samples = undefined;
     spectrum = undefined;
     modifiedSpectrum = undefined;
-    modifiedSamples = undefined;
 
-    constructor({numRows, numCols}) {
-        this.numRows = numRows;
-        this.numCols = numCols;
-    }
-
-    initSamplesAndCalcSpectrum() {
-        this.samples = generateValueGrid(this.numRows, this.numCols, this.initialSampleFunction)
-        this.spectrum = TerrainGenerator.fourierTransform(this.samples);
-    }
-
-    calcModifiedSpectrumAndModifiedSamples() {
+    calculateOutput(inputSamples) {
+        Utils.ensureRectangular(inputSamples);
+        if (inputSamples !== this.samples) {
+            this.samples = inputSamples;
+            this.spectrum = TerrainGenerator.fourierTransform(this.samples);
+        }
         this.modifiedSpectrum = TerrainGenerator.#transformSpectrum(this.spectrum, this.spectrumTransform);
-        this.modifiedSamples = normalize2dArray(TerrainGenerator.inverseFourierTransform(this.modifiedSpectrum));
-    }
-
-    calcAll() {
-        this.initSamplesAndCalcSpectrum();
-        this.calcModifiedSpectrumAndModifiedSamples();
+        return Utils.normalize2dArray(TerrainGenerator.inverseFourierTransform(this.modifiedSpectrum));
     }
 
     // fourier transform functions, maybe swap with faster versions later on
@@ -268,35 +194,58 @@ class TerrainGenerator {
 
 }
 
+// TODO use for shading
+function generateNormalsTexture(normals) {
+    Utils.ensureRectangular(normals);
 
-function ensureRectangular(array) {
-    array.forEach((row, _) => console.assert(row.length === array[0].length));
+    const height = normals.length; //rows
+    const width = normals[0].length; //cols
+
+    //add 0 for 4th component, transform from -1.0, +1.0 to 0.0, 1.0
+    let paddedNormals = normals.map(row => row.map(normal => [...math.dotDivide(math.add(normal, 1), 2), 0]));
+    //let paddedNormals = normals.map(row => row.map(normal => [...normal, 0]));
+
+
+    const typedArray = new Float32Array(paddedNormals.flat(3));
+
+    const texture = new THREE.DataTexture(typedArray, width, height, THREE.RGBAFormat, THREE.FloatType);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
+    return texture;
 }
 
 function generateTexture(data) {
-    ensureRectangular(data);
+    Utils.ensureRectangular(data);
 
     const height = data.length; //rows
     const width = data[0].length; //cols
 
     const typedArray = new Uint8Array(data.flat());
 
-    const texture = new THREE.DataTexture(typedArray, width, height,
-        THREE.RedFormat, THREE.UnsignedByteType);
-    texture.wrapS = THREE.ClampToEdgeWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
+    const texture = new THREE.DataTexture(typedArray, width, height, THREE.RedFormat, THREE.UnsignedByteType);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
     return texture;
 }
 
-function createHeightMapShaderMaterial(heightmapTexture = undefined, wireframe = true) {
+function createHeightMapShaderMaterial(heightmapTexture = undefined, normalsTexture = undefined, wireframe = true) {
     return new THREE.ShaderMaterial({
         uniforms: {
+            shadingMode: {value: 1},
+            time: {value: 0.0},
             heightMap: {value: heightmapTexture},
+            normals: {value: normalsTexture},
+            animationEnabled: {value: false},
+            animationSpeed: {value: new THREE.Vector2(0.0, 0.0)},
         },
-        vertexShader: vertexShaderText,
-        fragmentShader: fragmentShaderText,
-
+        vertexShader: heightmapVertexShaderText,
+        fragmentShader: heightmapFragmentShaderText,
         wireframe: wireframe,
         side: THREE.FrontSide,
     });
@@ -323,17 +272,62 @@ function createHeightMapGeometry(numHeightFieldRows, numHeightFieldCols, seamles
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(vertices.flat(2)), 3));
-    geometry.computeVertexNormals(true);
+    //geometry.computeVertexNormals(true);
     geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(uv.flat(2)), 2));
     geometry.setIndex(indices);
 
     return geometry;
 }
 
-class Controller {
-    static SHADING = {FLAT: "flat", WIREFRAME: "wireframe"};
+function computeHeightmapNormals(heights, scale = [0.05, 1.0, 0.05]) {
+    Utils.ensureRectangular(heights);
+    const height = heights.length;
+    const width = heights[0].length;
+    const normals = [...new Array(height)].map(row => new Array(width));
+    for (let rowIndex = 0; rowIndex < height; rowIndex++) {
+        for (let colIndex = 0; colIndex < width; colIndex++) {
 
-    shading = Controller.SHADING.WIREFRAME; //TODO work on it later
+            const current = math.dotMultiply(scale, [colIndex, heights[rowIndex][colIndex], rowIndex]);
+            const up = math.dotMultiply(scale, [colIndex, heights.at(rowIndex - 1).at(colIndex), rowIndex - 1]);
+            const down = math.dotMultiply(scale, [colIndex, heights.at((rowIndex + 1) % height).at(colIndex), rowIndex + 1]);
+            const left = math.dotMultiply(scale, [colIndex - 1, heights.at(rowIndex).at(colIndex - 1), rowIndex]);
+            const right = math.dotMultiply(scale, [colIndex + 1, heights.at(rowIndex).at((colIndex + 1) % width), rowIndex]);
+            const upRight = math.dotMultiply(scale, [colIndex + 1, heights.at(rowIndex - 1).at((colIndex + 1) % width), rowIndex - 1]);
+            const downLeft = math.dotMultiply(scale, [colIndex - 1, heights.at((rowIndex + 1) % height).at(colIndex - 1), rowIndex + 1]);
+
+
+            const normal = math.add(math.dotMultiply(1 / 6, getTriangleNormal(current, up, upRight)),
+                math.dotMultiply(1 / 6, getTriangleNormal(current, upRight, right)),
+                math.dotMultiply(1 / 6, getTriangleNormal(current, right, down)),
+                math.dotMultiply(1 / 6, getTriangleNormal(current, down, downLeft)),
+                math.dotMultiply(1 / 6, getTriangleNormal(current, downLeft, left)),
+                math.dotMultiply(1 / 6, getTriangleNormal(current, left, up)));
+            //normals[rowIndex][colIndex] = math.dotMultiply(normal, 1.0 / math.norm(normal, 2));
+            normals[rowIndex][colIndex] = getTriangleNormal(current, right, down);
+        }
+    }
+    return normals;
+}
+
+function getTriangleNormal(v1, v2, v3) {
+    const v1ToV2 = math.subtract(v2, v1);
+    const v1ToV3 = math.subtract(v3, v1);
+    const normal = math.cross(v1ToV3, v1ToV2);
+    const length = math.norm(normal, 2);
+    return math.dotMultiply(normal, 1 / length);
+}
+
+class Controller {
+    static SHADING_MODES = {
+        "color": 1,
+        "normal": 2,
+        "uv": 3,
+        "work-in-progress": 4,
+    };
+
+    shading = "color"; //TODO work on it later
+    axesHelper = new THREE.AxesHelper(5);
+
     hurstExponent = 2.0;
     numRows = 64;
     numCols = 64;
@@ -342,49 +336,54 @@ class Controller {
     yScale = 1.0;
     rowFrequencyFactor = 1.0;
     colFrequencyFactor = 1.0;
-
     tileRows = 1;
     tileCols = 1;
     seamless = false;
+    animationEnabled = false;
+    animationDirection = new THREE.Vector2(0.05, 0.0);
 
-    #terrainGenerator = new TerrainGenerator({numRows: this.numRows, numCols: this.numCols});
+    #terrainGenerator = new TerrainGenerator();
     #scene = new HeightmapScene(document.getElementById("webGlCanvas"));
 
-    #currentMaterial = undefined;
+    currentMaterial = undefined;
     #currentMeshes = [];
-
+    #currentInputSample = [];
+    #currentOutputSample = [];
+    #currentNormals = [];
 
     constructor() {
-        //const axesHelper = new THREE.AxesHelper(5);
-        //this.#scene.scene.add(axesHelper);
+        this.axesHelper.visible = false;
+        this.#scene.scene.add(this.axesHelper);
 
-        this.#terrainGenerator.spectrumTransform = hurstExponentWithFrequencyScaling(
-            this.hurstExponent, this.rowFrequencyFactor, this.colFrequencyFactor);
-        this.#terrainGenerator.calcAll();
-        this.updateScene();
+        this.#terrainGenerator.spectrumTransform = hurstExponentWithFrequencyScaling(this.hurstExponent,
+            this.rowFrequencyFactor, this.colFrequencyFactor);
+        this.generateNewHeightmap();
 
-        //scene.scene.add(new THREE.AmbientLight(0xFFFFFF, 0.5));
-        const light = new THREE.DirectionalLight(0xFFFFFF, 5);
-        light.position.set(0, 1, 0);
-        light.target.position.set(0, 0, 0);
-        this.#scene.scene.add(light);
-        //scene.scene.add(light.target);
-
+        this.#scene.updateCallback = this.updateCallback.bind(this);
         this.#scene.animate();
     }
 
+    updateCallback(deltaTime) {
+        if (this.currentMaterial !== undefined) {
+            this.currentMaterial.uniforms.time.value += deltaTime;
+        }
+    }
+
     updateScene() {
-        /*if (this.#lastMeshes.length !== 0) {
-            this.#lastMeshes[0].material.uniforms.heightMap.value.dispose();
-        }*/
+
         this.#currentMeshes.forEach(mesh => this.#scene.scene.remove(mesh));
         this.#currentMeshes.length = 0; // clear array
 
-        const samples = this.#terrainGenerator.modifiedSamples;
+        let heightmapTexture = createHeightmapTexture(this.#currentOutputSample);
+        let normalsTexture = generateNormalsTexture(this.#currentNormals);
 
-        const texture = createHeightmapTexture(samples);
-        this.#currentMaterial = createHeightMapShaderMaterial(texture);
-        this.updateMaterial(); //TODO somewhat ugly
+        this.currentMaterial = createHeightMapShaderMaterial(heightmapTexture, normalsTexture);
+        this.currentMaterial.uniforms.heightMap.value = heightmapTexture;
+        this.currentMaterial.uniforms.normals.value = normalsTexture;
+
+        this.updateShadingMode(); //TODO somewhat ugly
+        this.updateAnimationEnabled();
+        this.updateAnimationSpeeds();
 
         const geometry = createHeightMapGeometry(this.numRows, this.numCols,
             this.seamless, this.cellWidth, this.cellHeight);
@@ -395,7 +394,7 @@ class Controller {
         const zOffset = -this.tileRows * zSize / 2;
         for (let rowIndex = 0; rowIndex < this.tileRows; rowIndex++) {
             for (let colIndex = 0; colIndex < this.tileCols; colIndex++) {
-                const mesh = new THREE.Mesh(geometry, this.#currentMaterial);
+                const mesh = new THREE.Mesh(geometry, this.currentMaterial);
                 this.#scene.scene.add(mesh);
                 this.#currentMeshes.push(mesh);
                 mesh.position.set(colIndex * xSize + xOffset, 0, rowIndex * zSize + zOffset);
@@ -404,36 +403,39 @@ class Controller {
         }
     }
 
-    newRandomTerrain() {
-        this.#terrainGenerator.calcAll();
-        this.updateScene();
+    regenerateInputSamples() {
+        this.#currentInputSample = generateValueGrid(this.numRows, this.numCols, whiteNoise);
     }
 
-    updateMaterial() {
-        if (this.shading === Controller.SHADING.FLAT) {
-            this.#currentMaterial.wireframe = false;
-            this.#currentMaterial.flatShading = true;
-        } else if (this.shading === Controller.SHADING.WIREFRAME) {
-            this.#currentMaterial.wireframe = true;
-            this.#currentMaterial.flatShading = false;
-        }
-        this.#currentMaterial.needsUpdate = true;
-    }
-
-    updateAll() {
-        this.#terrainGenerator.numRows = this.numRows;
-        this.#terrainGenerator.numCols = this.numCols;
+    calculateOutputSamples() {
         this.#terrainGenerator.spectrumTransform = hurstExponentWithFrequencyScaling(this.hurstExponent,
             this.rowFrequencyFactor, this.colFrequencyFactor);
-        this.#terrainGenerator.calcAll();
+        this.#currentOutputSample = this.#terrainGenerator.calculateOutput(this.#currentInputSample);
+        this.#currentNormals = computeHeightmapNormals(this.#currentOutputSample);
+    }
+
+    regenerateHeightmap() {
+        this.calculateOutputSamples();
         this.updateScene();
     }
 
-    updateModifiedSpectrumAndSamples() {
-        this.#terrainGenerator.spectrumTransform = hurstExponentWithFrequencyScaling(this.hurstExponent,
-            this.rowFrequencyFactor, this.colFrequencyFactor);
-        this.#terrainGenerator.calcModifiedSpectrumAndModifiedSamples();
+    generateNewHeightmap() {
+        this.regenerateInputSamples();
+        this.calculateOutputSamples();
         this.updateScene();
+    }
+
+    updateShadingMode() {
+        this.currentMaterial.uniforms.shadingMode.value = Controller.SHADING_MODES[this.shading];
+    }
+
+    updateAnimationEnabled() {
+        this.currentMaterial.uniforms.time.value = 0.0;
+        this.currentMaterial.uniforms.animationEnabled.value = this.animationEnabled;
+    }
+
+    updateAnimationSpeeds() {
+        this.currentMaterial.uniforms.animationSpeed.value = this.animationDirection;
     }
 
 }
@@ -446,14 +448,18 @@ function main() {
     const gui = new GUI();
 
     const displayOptionsFolder = gui.addFolder("Display");
-    displayOptionsFolder.add(controller, "shading", Controller.SHADING)
-        .onChange(_ => controller.updateMaterial());
+    displayOptionsFolder.add(controller, "shading", Object.keys(Controller.SHADING_MODES))
+        .onChange(_ => controller.updateShadingMode());
+    displayOptionsFolder.add(controller.currentMaterial, "wireframe")
+        .name("Wireframe")
+    displayOptionsFolder.add(controller.axesHelper, "visible")
+        .name("Show world axes");
 
     const gridOptionsFolder = gui.addFolder("Grid dimensions and scaling");
     gridOptionsFolder.add(controller, "numRows", 0, 128, 1)
-        .onFinishChange(_ => controller.updateAll());
+        .onFinishChange(_ => controller.generateNewHeightmap());
     gridOptionsFolder.add(controller, "numCols", 0, 128, 1)
-        .onFinishChange(_ => controller.updateAll());
+        .onFinishChange(_ => controller.generateNewHeightmap());
     gridOptionsFolder.add(controller, "cellWidth", 0.05, 0.5, 0.05)
         .onChange(_ => controller.updateScene());
     gridOptionsFolder.add(controller, "cellHeight", 0.05, 0.5, 0.05)
@@ -463,11 +469,11 @@ function main() {
 
     const generationOptionsFolder = gui.addFolder("Generation");
     generationOptionsFolder.add(controller, "hurstExponent", 0.0, 5.0)
-        .onFinishChange(_ => controller.updateModifiedSpectrumAndSamples());
+        .onFinishChange(_ => controller.regenerateHeightmap());
     generationOptionsFolder.add(controller, "rowFrequencyFactor", 0.0, 3.0)
-        .onFinishChange(_ => controller.updateModifiedSpectrumAndSamples());
+        .onFinishChange(_ => controller.regenerateHeightmap());
     generationOptionsFolder.add(controller, "colFrequencyFactor", 0.0, 3.0)
-        .onFinishChange(_ => controller.updateModifiedSpectrumAndSamples());
+        .onFinishChange(_ => controller.regenerateHeightmap());
 
     const tilingOptions = gui.addFolder("Tiling");
     tilingOptions.add(controller, "tileRows", 1, 100, 1)
@@ -477,7 +483,17 @@ function main() {
     tilingOptions.add(controller, "seamless")
         .onChange(_ => controller.updateScene());
 
-    gui.add(controller, "newRandomTerrain");
+    const animationOptions = gui.addFolder("Animation");
+    animationOptions.add(controller, "animationEnabled")
+        .onChange(_ => controller.updateAnimationEnabled());
+    animationOptions.add(controller.animationDirection, "x")
+        .name("animation speed x+")
+        .onChange(_ => controller.updateAnimationSpeeds());
+    animationOptions.add(controller.animationDirection, "y")
+        .name("animation speed z+")
+        .onChange(_ => controller.updateAnimationSpeeds());
+
+    gui.add(controller, "generateNewHeightmap");
 
 }
 
@@ -492,13 +508,13 @@ function loadTextFile(path) {
     });
 }
 
-let vertexShaderText;
-let fragmentShaderText;
+let heightmapVertexShaderText;
+let heightmapFragmentShaderText;
 
-Promise.all([loadTextFile("shader/single-heightmap-vertex.glsl"), loadTextFile("shader/single-heightmap-fragment.glsl")])
-    .then(([vertexEvent, fragmentEvent]) => {
-        vertexShaderText = vertexEvent.target.responseText;
-        fragmentShaderText = fragmentEvent.target.responseText;
+Promise.all([loadTextFile("shader/heightmap-vertex.glsl"), loadTextFile("shader/heightmap-fragment.glsl")])
+    .then(([singleVertexEvent, singleFragmentEvent]) => {
+        heightmapVertexShaderText = singleVertexEvent.target.responseText;
+        heightmapFragmentShaderText = singleFragmentEvent.target.responseText;
         main();
     })
     .catch((event) => console.log("load error", event));
