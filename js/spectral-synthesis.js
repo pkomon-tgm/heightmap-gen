@@ -36,7 +36,7 @@ class HeightmapScene {
         // camera parameters
         this.radius = 5;
         this.phi = Math.PI / 2;
-        this.theta = Math.PI / 4;
+        this.theta = 3 * Math.PI / 8;
         this.cameraCenter = new THREE.Vector3(0, 0, 0);
 
         this.updateArcballCamera();
@@ -332,7 +332,7 @@ class Controller {
     hurstExponent = 2.0;
     numRows = 64;
     numCols = 64;
-    scale = new THREE.Vector3(0.25, 1.0, 0.25);
+    scale = new THREE.Vector3(0.25, 1.15, 0.25);
     rowFrequencyFactor = 1.0;
     colFrequencyFactor = 1.0;
     tileRows = 1;
