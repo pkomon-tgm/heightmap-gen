@@ -1,6 +1,7 @@
 
 // provided by THREE.js
 //uniform vec3 cameraPosition;
+
 uniform int shadingMode;
 
 varying vec2 vUv;

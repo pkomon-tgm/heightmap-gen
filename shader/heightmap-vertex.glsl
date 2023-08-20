@@ -6,6 +6,15 @@ uniform float time;
 uniform vec2 animationSpeed;
 uniform bool animationEnabled;
 
+// provided by three.js
+//uniform mat4 modelViewMatrix;
+//uniform mat4 projectionMatrix;
+
+// provided by three.js:
+//attribute vec3 position;
+//attribute vec3 normal;
+//attribute vec2 uv;
+
 varying vec2 vUv;
 varying vec3 vertexPosition;
 varying vec3 vertexNormal;
