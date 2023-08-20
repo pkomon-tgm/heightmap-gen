@@ -89,7 +89,7 @@ class HeightmapScene {
         }
     }
 
-    animate(currentTimestamp) {
+    animate(currentTimestamp = performance.now()) {
         requestAnimationFrame(this.animate.bind(this));
 
         if (this.lastTimeStamp === undefined) {
@@ -337,8 +337,8 @@ class Controller {
     colFrequencyFactor = 1.0;
     tileRows = 1;
     tileCols = 1;
-    seamless = false;
-    animationEnabled = false;
+    seamless = true;
+    animationEnabled = true;
     animationDirection = new THREE.Vector2(0.05, 0.0);
 
     #terrainGenerator = new TerrainGenerator();
@@ -461,46 +461,57 @@ function main() {
     displayOptionsFolder.add(controller.axesHelper, "visible")
         .name("Show world axes");
 
-    const gridOptionsFolder = gui.addFolder("Grid dimensions and scaling");
-    gridOptionsFolder.add(controller, "numRows", 0, 128, 1)
+    const sampleSizeFolder = gui.addFolder("Sample size");
+    sampleSizeFolder.add(controller, "numRows", 0, 128, 1)
+        .name("Number of samples x")
         .onFinishChange(_ => controller.generateNewHeightmap());
-    gridOptionsFolder.add(controller, "numCols", 0, 128, 1)
+    sampleSizeFolder.add(controller, "numCols", 0, 128, 1)
+        .name("Number of samples z")
         .onFinishChange(_ => controller.generateNewHeightmap());
-    gridOptionsFolder.add(controller.scale, "x", 0.05, 0.5, 0.05)
+
+    const scalingFolder = gui.addFolder("Scaling")
+    scalingFolder.add(controller.scale, "x", 0.05, 0.5, 0.05)
         .onChange(_ => controller.updateScene());
-    gridOptionsFolder.add(controller.scale, "z", 0.05, 0.5, 0.05)
+    scalingFolder.add(controller.scale, "y", 0.0, 10.0)
         .onChange(_ => controller.updateScene());
-    gridOptionsFolder.add(controller.scale, "y", 0.0, 10.0)
+    scalingFolder.add(controller.scale, "z", 0.05, 0.5, 0.05)
         .onChange(_ => controller.updateScene());
 
     const generationOptionsFolder = gui.addFolder("Generation");
     generationOptionsFolder.add(controller, "hurstExponent", 0.0, 5.0)
-        .onFinishChange(_ => controller.regenerateHeightmap());
-    generationOptionsFolder.add(controller, "rowFrequencyFactor", 0.0, 3.0)
+        .name("Roughness")
         .onFinishChange(_ => controller.regenerateHeightmap());
     generationOptionsFolder.add(controller, "colFrequencyFactor", 0.0, 3.0)
+        .name("Freq drop-off factor +x")
+        .onFinishChange(_ => controller.regenerateHeightmap());
+    generationOptionsFolder.add(controller, "rowFrequencyFactor", 0.0, 3.0)
+        .name("Freq drop-off factor +z")
         .onFinishChange(_ => controller.regenerateHeightmap());
 
     const tilingOptions = gui.addFolder("Tiling");
-    tilingOptions.add(controller, "tileRows", 1, 100, 1)
-        .onChange(_ => controller.updateScene());
     tilingOptions.add(controller, "tileCols", 1, 100, 1)
+        .name("Number of instances x")
+        .onChange(_ => controller.updateScene());
+    tilingOptions.add(controller, "tileRows", 1, 100, 1)
+        .name("Number of instances z")
         .onChange(_ => controller.updateScene());
     tilingOptions.add(controller, "seamless")
+        .name("Seamless")
         .onChange(_ => controller.updateScene());
 
     const animationOptions = gui.addFolder("Animation");
     animationOptions.add(controller, "animationEnabled")
+        .name("Enable animation")
         .onChange(_ => controller.updateAnimationEnabled());
-    animationOptions.add(controller.animationDirection, "x")
-        .name("animation speed x+")
+    animationOptions.add(controller.animationDirection, "x", -0.25, 0.25)
+        .name("Animation speed x+")
         .onChange(_ => controller.updateAnimationSpeeds());
-    animationOptions.add(controller.animationDirection, "y")
-        .name("animation speed z+")
+    animationOptions.add(controller.animationDirection, "y", -0.25, 0.25)
+        .name("Animation speed z+")
         .onChange(_ => controller.updateAnimationSpeeds());
 
-    gui.add(controller, "generateNewHeightmap");
-
+    gui.add(controller, "generateNewHeightmap")
+        .name("Generate new heightmap");
 }
 
 
