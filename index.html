@@ -17,10 +17,21 @@
         }
     </script>
     <script src="https://unpkg.com/mathjs@11.9.1/lib/browser/math.js"></script>
-
+    <style>
+        #repoLinkContainer {
+            position: fixed;
+            right: 0;
+            z-index: 1002;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.5);
+            font-family: sans-serif;
+            padding: 2px 5px;
+        }
+    </style>
 </head>
 <body>
 <canvas id="webGlCanvas"></canvas>
 <script type="module" src="js/spectral-synthesis.js"></script>
+<div id="repoLinkContainer"><a href="https://github.com/pkomon-tgm/heightmap-gen">GitHub Repository</a></div>
 </body>
 </html>
