@@ -77,7 +77,7 @@ class HeightmapScene {
         this.lastPointerCoordinates = [event.clientX, event.clientY];
 
         if (event.shiftKey) {
-            const relativeMovement = new THREE.Vector3(-movementY * this.dragSensitivity, 0, movementX * this.dragSensitivity)
+            const relativeMovement = new THREE.Vector3(movementY * this.dragSensitivity, 0, -movementX * this.dragSensitivity)
                 .applyAxisAngle(new THREE.Vector3(0, 1, 0), -this.phi);
             this.cameraCenter.add(relativeMovement);
             this.updateArcballCamera();
