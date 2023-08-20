@@ -45,19 +45,18 @@ class HeightmapScene {
         this.renderer.setSize(width, height);
 
         this.isMouseDown = false;
-        domElement.addEventListener("mousedown", () => {
+        domElement.addEventListener("pointerdown", (_) => {
             this.isMouseDown = true;
         });
-        domElement.addEventListener("mouseup", () => {
+        domElement.addEventListener("pointerup", (_) => {
             this.isMouseDown = false;
         });
-        domElement.addEventListener("mousemove", (event) => {
+        domElement.addEventListener("pointermove", (event) => {
             this.handleMouseMove(event);
         });
         domElement.addEventListener("wheel", (event) => {
             this.handleMouseScroll(event);
         });
-
     }
 
     updateArcballCamera() {
@@ -65,6 +64,7 @@ class HeightmapScene {
     }
 
     handleMouseMove(event) {
+        console.log(event);
         if (!this.isMouseDown) {
             return;
         }
@@ -460,6 +460,7 @@ function main() {
         .onChange(_ => controller.updateWireframe());
     displayOptionsFolder.add(controller.axesHelper, "visible")
         .name("Show world axes");
+    displayOptionsFolder.close();
 
     const sampleSizeFolder = gui.addFolder("Sample size");
     sampleSizeFolder.add(controller, "numRows", 0, 128, 1)
@@ -468,6 +469,7 @@ function main() {
     sampleSizeFolder.add(controller, "numCols", 0, 128, 1)
         .name("Number of samples z")
         .onFinishChange(_ => controller.generateNewHeightmap());
+    sampleSizeFolder.close();
 
     const scalingFolder = gui.addFolder("Scaling")
     scalingFolder.add(controller.scale, "x", 0.05, 0.5, 0.05)
@@ -476,6 +478,7 @@ function main() {
         .onChange(_ => controller.updateScene());
     scalingFolder.add(controller.scale, "z", 0.05, 0.5, 0.05)
         .onChange(_ => controller.updateScene());
+    scalingFolder.close();
 
     const generationOptionsFolder = gui.addFolder("Generation");
     generationOptionsFolder.add(controller, "hurstExponent", 0.0, 5.0)
@@ -487,6 +490,7 @@ function main() {
     generationOptionsFolder.add(controller, "rowFrequencyFactor", 0.0, 3.0)
         .name("Freq drop-off factor +z")
         .onFinishChange(_ => controller.regenerateHeightmap());
+    generationOptionsFolder.close();
 
     const tilingOptions = gui.addFolder("Tiling");
     tilingOptions.add(controller, "tileCols", 1, 100, 1)
@@ -498,6 +502,7 @@ function main() {
     tilingOptions.add(controller, "seamless")
         .name("Seamless")
         .onChange(_ => controller.updateScene());
+    tilingOptions.close();
 
     const animationOptions = gui.addFolder("Animation");
     animationOptions.add(controller, "animationEnabled")
@@ -509,9 +514,11 @@ function main() {
     animationOptions.add(controller.animationDirection, "y", -0.25, 0.25)
         .name("Animation speed z+")
         .onChange(_ => controller.updateAnimationSpeeds());
+    animationOptions.close();
 
     gui.add(controller, "generateNewHeightmap")
         .name("Generate new heightmap");
+    gui.close();
 }
 
 
