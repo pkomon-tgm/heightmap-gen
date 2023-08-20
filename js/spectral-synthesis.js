@@ -23,33 +23,37 @@ class HeightmapScene {
     orbitSensitivity = 0.005;
     scrollSensitivity = 0.5;
 
+    // camera parameters
+    radius = 5;
+    phi = Math.PI / 2;
+    theta = 3 * Math.PI / 8;
+    cameraCenter = new THREE.Vector3(0, 0, 0);
+
+    perspectiveCamera = undefined;
+    scene = new THREE.Scene();
+    renderer = undefined;
+
     updateCallback = undefined;
     lastTimeStamp = undefined;
+    lastPointerCoordinates = undefined;
 
     constructor(domElement) {
         const {width, height} = domElement.getBoundingClientRect();
 
-        this.scene = new THREE.Scene();
-        this.perspCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-        this.perspCamera.up.set(0, 1, 0);
-
-        // camera parameters
-        this.radius = 5;
-        this.phi = Math.PI / 2;
-        this.theta = 3 * Math.PI / 8;
-        this.cameraCenter = new THREE.Vector3(0, 0, 0);
+        this.perspectiveCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+        this.perspectiveCamera.up.set(0, 1, 0);
 
         this.updateArcballCamera();
 
         this.renderer = new THREE.WebGLRenderer({canvas: domElement});
         this.renderer.setSize(width, height);
 
-        this.isMouseDown = false;
-        domElement.addEventListener("pointerdown", (_) => {
-            this.isMouseDown = true;
+        domElement.addEventListener("pointerdown", (event) => {
+            this.lastPointerCoordinates = [event.clientX, event.clientY];
         });
         domElement.addEventListener("pointerup", (_) => {
-            this.isMouseDown = false;
+            this.lastPointerCoordinates = undefined;
+
         });
         domElement.addEventListener("pointermove", (event) => {
             this.handleMouseMove(event);
@@ -60,23 +64,26 @@ class HeightmapScene {
     }
 
     updateArcballCamera() {
-        HeightmapScene.updateCamera(this.perspCamera, this.radius, this.theta, this.phi, this.cameraCenter);
+        HeightmapScene.updateCamera(this.perspectiveCamera, this.radius, this.theta, this.phi, this.cameraCenter);
     }
 
     handleMouseMove(event) {
-        console.log(event);
-        if (!this.isMouseDown) {
+        if (this.lastPointerCoordinates === undefined) {
             return;
         }
 
+        const movementX = this.lastPointerCoordinates[0] - event.clientX;
+        const movementY = this.lastPointerCoordinates[1] - event.clientY;
+        this.lastPointerCoordinates = [event.clientX, event.clientY];
+
         if (event.shiftKey) {
-            const relativeMovement = new THREE.Vector3(-event.movementY * this.dragSensitivity, 0, event.movementX * this.dragSensitivity)
+            const relativeMovement = new THREE.Vector3(-movementY * this.dragSensitivity, 0, movementX * this.dragSensitivity)
                 .applyAxisAngle(new THREE.Vector3(0, 1, 0), -this.phi);
             this.cameraCenter.add(relativeMovement);
             this.updateArcballCamera();
         } else {
-            this.theta = Utils.clamp(this.orbitSensitivity, this.theta - event.movementY * this.orbitSensitivity, Math.PI - this.orbitSensitivity);
-            this.phi = this.phi + event.movementX * this.orbitSensitivity;
+            this.theta = Utils.clamp(this.orbitSensitivity, this.theta + movementY * this.orbitSensitivity, Math.PI - this.orbitSensitivity);
+            this.phi = this.phi - movementX * this.orbitSensitivity;
             this.updateArcballCamera();
         }
     }
@@ -103,7 +110,7 @@ class HeightmapScene {
             this.updateCallback(timeElapsedSinceLastFrame);
         }
 
-        this.renderer.render(this.scene, this.perspCamera);
+        this.renderer.render(this.scene, this.perspectiveCamera);
     }
 
     static updateCamera(camera, radius, theta, phi, center) {
