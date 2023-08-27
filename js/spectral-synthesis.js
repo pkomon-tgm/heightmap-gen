@@ -143,7 +143,7 @@ function generateGridMeshVertices(numRows, numCols, cellSizeAlongX = 1.0, cellSi
 function generateGridMeshUv(numRows, numCols) {
     return [...new Array(numRows)]
         .map((_, rowIndex) => [...new Array(numCols)]
-            .map((_, colIndex) => [colIndex / (numCols - 1), rowIndex / (numRows - 1)]));
+            .map((_, colIndex) => [colIndex / numCols + 1/(2*numCols), rowIndex / numRows +  1/(2*numRows)]));
 }
 
 // used for transforming spectrum
