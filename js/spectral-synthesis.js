@@ -224,15 +224,14 @@ function generateNormalsTexture(normals) {
     return texture;
 }
 
-function generateTexture(data) {
+function createHeightmapTexture(data) {
     Utils.ensureRectangular(data);
 
     const height = data.length; //rows
     const width = data[0].length; //cols
 
-    const typedArray = new Uint8Array(data.flat());
-
-    const texture = new THREE.DataTexture(typedArray, width, height, THREE.RedFormat, THREE.UnsignedByteType);
+    const typedArray = new Float32Array(data.flat());
+    const texture = new THREE.DataTexture(typedArray, width, height, THREE.RedFormat, THREE.FloatType);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.minFilter = THREE.LinearFilter;
