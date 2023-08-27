@@ -308,8 +308,7 @@ function computeHeightmapNormals(heights, scale) {
                 math.dotMultiply(1 / 6, getTriangleNormal(current, down, downLeft)),
                 math.dotMultiply(1 / 6, getTriangleNormal(current, downLeft, left)),
                 math.dotMultiply(1 / 6, getTriangleNormal(current, left, up)));
-            //normals[rowIndex][colIndex] = math.dotMultiply(normal, 1.0 / math.norm(normal, 2));
-            normals[rowIndex][colIndex] = getTriangleNormal(current, right, down);
+            normals[rowIndex][colIndex] = math.dotMultiply(normal, 1.0 / math.norm(normal, 2));
         }
     }
     return normals;
