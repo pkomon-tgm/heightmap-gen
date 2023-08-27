@@ -366,6 +366,7 @@ class Controller {
     shading = "color"; //TODO work on it later
     axesHelper = new THREE.AxesHelper(5);
     wireframe = true;
+    showNormals = false;
 
     hurstExponent = 2.0;
     numRows = 64;
@@ -454,6 +455,7 @@ class Controller {
         this.updateShadingMode();
         this.updateAnimationEnabled();
         this.updateAnimationSpeeds();
+        this.updateShowNormals();
     }
 
     regenerateInputSamples() {
@@ -504,6 +506,10 @@ class Controller {
         this.updateScene();
     }
 
+    updateShowNormals() {
+        this.#currentNormalObject.visible = this.showNormals;
+    }
+
 }
 
 
@@ -521,6 +527,9 @@ function main() {
         .onChange(_ => controller.updateWireframe());
     displayOptionsFolder.add(controller.axesHelper, "visible")
         .name("Show world axes");
+    displayOptionsFolder.add(controller, "showNormals")
+        .name("Show vertex normals")
+        .onChange(_ => controller.updateShowNormals());
     displayOptionsFolder.close();
 
     const sampleSizeFolder = gui.addFolder("Sample size");
