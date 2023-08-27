@@ -448,6 +448,9 @@ class Controller {
 
     updateAnimationSpeeds() {
         this.currentMaterial.uniforms.animationSpeed.value = this.animationDirection;
+    updateScale() {
+        this.#currentNormals = computeHeightmapNormals(this.#currentOutputSample, this.scale.toArray());
+        this.updateScene();
     }
 
 }
@@ -480,11 +483,11 @@ function main() {
 
     const scalingFolder = gui.addFolder("Scaling")
     scalingFolder.add(controller.scale, "x", 0.05, 0.5, 0.05)
-        .onChange(_ => controller.updateScene());
+        .onChange(_ => controller.updateScale());
     scalingFolder.add(controller.scale, "y", 0.0, 10.0)
-        .onChange(_ => controller.updateScene());
+        .onChange(_ => controller.updateScale());
     scalingFolder.add(controller.scale, "z", 0.05, 0.5, 0.05)
-        .onChange(_ => controller.updateScene());
+        .onChange(_ => controller.updateScale());
     scalingFolder.close();
 
     const generationOptionsFolder = gui.addFolder("Generation");
