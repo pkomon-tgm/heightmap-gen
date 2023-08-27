@@ -257,9 +257,19 @@ function createHeightMapShaderMaterial(heightmapTexture = undefined, normalsText
     });
 }
 
-function createHeightmapTexture(heightmapData) {
-    const textureData = heightmapData.map(row => row.map(value => Math.round(value * 255))); //TODO
-    return generateTexture(textureData);
+function createHeightmapNormalMaterial(heightmapTexture = undefined, normalsTexture = undefined) {
+    return new THREE.ShaderMaterial({
+        uniforms: {
+            indicatorLength: {value: 0.1},
+            time: {value: 0.0},
+            heightMap: {value: heightmapTexture},
+            normals: {value: normalsTexture},
+            animationEnabled: {value: false},
+            animationSpeed: {value: new THREE.Vector2(0.0, 0.0)},
+        },
+        vertexShader: heightmapNormalVertexShaderText,
+        fragmentShader: heightmapNormalFragmentShaderText,
+    });
 }
 
 function createHeightMapGeometry(numHeightFieldRows, numHeightFieldCols, seamless) {
@@ -281,6 +291,29 @@ function createHeightMapGeometry(numHeightFieldRows, numHeightFieldCols, seamles
     //geometry.computeVertexNormals(true);
     geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(uv.flat(2)), 2));
     geometry.setIndex(indices);
+
+    return geometry;
+}
+
+function createHeightmapNormalGeometry(numHeightFieldRows, numHeightFieldCols, seamless) {
+    const numRowsWithSeam = seamless ? numHeightFieldRows + 1 : numHeightFieldRows;
+    const numColsWithSeam = seamless ? numHeightFieldCols + 1 : numHeightFieldCols;
+
+    const vertices = generateGridMeshVertices(numRowsWithSeam, numColsWithSeam);
+    let uv = generateGridMeshUv(numHeightFieldRows, numHeightFieldCols);
+
+    // loop height and uv values around for seamless
+    if (seamless) {
+        uv = uv.map(col => col.concat([col[0]]));
+        uv = uv.concat([uv[0]]);
+    }
+
+    const duplicatedVertices = vertices.map(row => row.map(vertex => [vertex, vertex]));
+    const duplicatedUv = uv.map(row => row.map(uv => [uv, uv]));
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(duplicatedVertices.flat(3)), 3));
+    geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(duplicatedUv.flat(3)), 2));
 
     return geometry;
 }
@@ -349,11 +382,13 @@ class Controller {
     #terrainGenerator = new TerrainGenerator();
     #scene = new HeightmapScene(document.getElementById("webGlCanvas"));
 
+    currentNormalMaterial = undefined;
     currentMaterial = undefined;
     #currentMeshes = [];
     #currentInputSample = [];
     #currentOutputSample = [];
     #currentNormals = [];
+    #currentNormalObject = undefined;
 
     constructor() {
         this.axesHelper.visible = false;
@@ -370,6 +405,7 @@ class Controller {
     updateCallback(deltaTime) {
         if (this.currentMaterial !== undefined) {
             this.currentMaterial.uniforms.time.value += deltaTime;
+            this.currentNormalMaterial.uniforms.time.value += deltaTime;
         }
     }
 
@@ -384,12 +420,6 @@ class Controller {
         this.currentMaterial = createHeightMapShaderMaterial(heightmapTexture, normalsTexture);
         this.currentMaterial.uniforms.heightMap.value = heightmapTexture;
         this.currentMaterial.uniforms.normals.value = normalsTexture;
-
-        //TODO somewhat ugly
-        this.updateWireframe();
-        this.updateShadingMode();
-        this.updateAnimationEnabled();
-        this.updateAnimationSpeeds();
 
         const geometry = createHeightMapGeometry(this.numRows, this.numCols, this.seamless);
 
@@ -406,6 +436,46 @@ class Controller {
                 mesh.scale.set(this.scale.x, this.scale.y, this.scale.z);
             }
         }
+
+        this.currentNormalMaterial = createHeightmapNormalMaterial(heightmapTexture, normalsTexture);
+        this.currentNormalMaterial.uniforms.heightMap.value = heightmapTexture;
+        this.currentNormalMaterial.uniforms.normals.value = normalsTexture;
+        const geometryNormal = createHeightmapNormalGeometry(this.numRows, this.numCols, this.seamless);
+        if (this.#currentNormalObject !== undefined) {
+            this.#scene.scene.remove(this.#currentNormalObject);
+        }
+        this.#currentNormalObject = new THREE.LineSegments(geometryNormal, this.currentNormalMaterial);
+        this.#currentNormalObject.scale.set(this.scale.x, this.scale.y, this.scale.z);
+        this.#currentNormalObject.position.set(xOffset, 0, zOffset);
+        this.#scene.scene.add(this.#currentNormalObject);
+
+        //TODO somewhat ugly
+        this.updateWireframe();
+        this.updateShadingMode();
+        this.updateAnimationEnabled();
+        this.updateAnimationSpeeds();
+
+        //TODO old code used for debugging normals
+        /*this.#currentNormal3dObjects.forEach(line => this.#scene.scene.remove(line));
+        this.#currentNormal3dObjects = [];
+        for (let rowIndex = 0; rowIndex < this.#currentNormals.length; rowIndex++) {
+            for (let colIndex = 0; colIndex < this.#currentNormals[rowIndex].length; colIndex++) {
+                const start = new THREE.Vector3(
+                    colIndex * this.scale.x,
+                    this.#currentOutputSample[rowIndex][colIndex],
+                    rowIndex * this.scale.z);
+                const end = new THREE.Vector3().addVectors(
+                    start,
+                    new THREE.Vector3(...this.#currentNormals[rowIndex][colIndex]).multiplyScalar(0.2));
+                const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+                const material = new THREE.LineBasicMaterial({ color: 0xff0000 });
+                const line = new THREE.Line(geometry, material);
+                //line.position.set(colIndex * xSize + xOffset, 0, rowIndex * zSize + zOffset);
+                this.#scene.scene.add(line);
+                this.#currentNormal3dObjects.push(line);
+            }
+        }*/
+
     }
 
     regenerateInputSamples() {
@@ -442,10 +512,15 @@ class Controller {
     updateAnimationEnabled() {
         this.currentMaterial.uniforms.time.value = 0.0;
         this.currentMaterial.uniforms.animationEnabled.value = this.animationEnabled;
+        this.currentNormalMaterial.uniforms.time.value = 0.0;
+        this.currentNormalMaterial.uniforms.animationEnabled.value = this.animationEnabled;
     }
 
     updateAnimationSpeeds() {
         this.currentMaterial.uniforms.animationSpeed.value = this.animationDirection;
+        this.currentNormalMaterial.uniforms.animationSpeed.value = this.animationDirection;
+    }
+
     updateScale() {
         this.#currentNormals = computeHeightmapNormals(this.#currentOutputSample, this.scale.toArray());
         this.updateScene();
@@ -542,11 +617,21 @@ function loadTextFile(path) {
 
 let heightmapVertexShaderText;
 let heightmapFragmentShaderText;
+let heightmapNormalVertexShaderText;
+let heightmapNormalFragmentShaderText;
 
-Promise.all([loadTextFile("shader/heightmap-vertex.glsl"), loadTextFile("shader/heightmap-fragment.glsl")])
-    .then(([singleVertexEvent, singleFragmentEvent]) => {
+
+Promise.all([
+    loadTextFile("shader/heightmap-vertex.glsl"),
+    loadTextFile("shader/heightmap-fragment.glsl"),
+    loadTextFile("shader/heightmap-normals-vertex.glsl"),
+    loadTextFile("shader/heightmap-normals-fragment.glsl"),
+]).then(([singleVertexEvent, singleFragmentEvent,
+                normalVertexShaderEvent, normalFragmentShaderEvent]) => {
         heightmapVertexShaderText = singleVertexEvent.target.responseText;
         heightmapFragmentShaderText = singleFragmentEvent.target.responseText;
+        heightmapNormalVertexShaderText = normalVertexShaderEvent.target.responseText;
+        heightmapNormalFragmentShaderText = normalFragmentShaderEvent.target.responseText;
         main();
     })
     .catch((event) => console.log("load error", event));
