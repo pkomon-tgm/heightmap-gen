@@ -454,28 +454,6 @@ class Controller {
         this.updateShadingMode();
         this.updateAnimationEnabled();
         this.updateAnimationSpeeds();
-
-        //TODO old code used for debugging normals
-        /*this.#currentNormal3dObjects.forEach(line => this.#scene.scene.remove(line));
-        this.#currentNormal3dObjects = [];
-        for (let rowIndex = 0; rowIndex < this.#currentNormals.length; rowIndex++) {
-            for (let colIndex = 0; colIndex < this.#currentNormals[rowIndex].length; colIndex++) {
-                const start = new THREE.Vector3(
-                    colIndex * this.scale.x,
-                    this.#currentOutputSample[rowIndex][colIndex],
-                    rowIndex * this.scale.z);
-                const end = new THREE.Vector3().addVectors(
-                    start,
-                    new THREE.Vector3(...this.#currentNormals[rowIndex][colIndex]).multiplyScalar(0.2));
-                const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
-                const material = new THREE.LineBasicMaterial({ color: 0xff0000 });
-                const line = new THREE.Line(geometry, material);
-                //line.position.set(colIndex * xSize + xOffset, 0, rowIndex * zSize + zOffset);
-                this.#scene.scene.add(line);
-                this.#currentNormal3dObjects.push(line);
-            }
-        }*/
-
     }
 
     regenerateInputSamples() {
